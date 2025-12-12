@@ -19,6 +19,7 @@
             --playlist-bg: #f8f9fa;
             --playlist-border: #e9ecef;
             --playlist-hover: #e9ecef;
+            --city-link: #0077b6;
         }
 
         body.dark-mode {
@@ -33,6 +34,7 @@
             --playlist-bg: #334155;
             --playlist-border: #475569;
             --playlist-hover: #475569;
+            --city-link: #7dd3fc;
         }
 
         * {
@@ -51,14 +53,14 @@
             overflow-x: hidden;
         }
 
-        /* Канвас для фона (Снег) */
+        /* Канвас для фона */
         #bg-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: -1; /* Помещаем назад */
+            z-index: -1;
             pointer-events: none;
         }
 
@@ -132,6 +134,18 @@
         .info-item strong {
             color: var(--accent-color);
         }
+        /* Стили для города в погоде */
+        #weather-city {
+            cursor: pointer;
+            border-bottom: 1px dashed var(--city-link);
+            color: var(--city-link);
+            transition: all 0.2s;
+        }
+        #weather-city:hover {
+            border-bottom-style: solid;
+            opacity: 0.8;
+        }
+
         .media-section {
             background: var(--card-bg);
             border-radius: 15px;
@@ -377,6 +391,17 @@
             <div class="info-item">
                 <strong>Учебное заведение:</strong> Чебоксарский институт (филиал) Московского Политеха
             </div>
+            <!-- Блок погоды -->
+            <div class="info-item">
+                <strong>Погода:</strong> 
+                <span id="weather-city" title="Нажмите, чтобы изменить город">Определяем...</span> 
+                <span id="weather-temp"></span>
+                <span id="weather-icon"></span>
+            </div>
+            <!-- Блок валют -->
+            <div class="info-item">
+                <strong>Курс USD:</strong> <span id="currency-usd">Загрузка...</span> ₽
+            </div>
         </div>
         <!-- 3D модель Sketchfab -->
         <div class="media-section">
@@ -389,7 +414,6 @@
         <div class="media-section">
             <h2 class="section-title">Видео</h2>
             <div class="video-container">
-                <!-- Новая ссылка для RuTube -->
                 <iframe width="720" height="405" src="https://rutube.ru/play/embed/7e279d038cb2ceb1689bf685ff0eebbe/" frameBorder="0" allow="clipboard-write; autoplay" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>
             </div>
             <p>Моё любимое видео с платформы RuTube</p>
@@ -453,6 +477,98 @@
         <p>© 2025 Сайт Алексея. Все права защищены.</p>
     </footer>
     <script>
+        // --- Погода и Курс Валют ---
+        const weatherApiKey = '58e310878dcae97b7fd2ed9b73f6d716';
+        const weatherCityElem = document.getElementById('weather-city');
+        const weatherTempElem = document.getElementById('weather-temp');
+        const weatherIconElem = document.getElementById('weather-icon');
+        const currencyElem = document.getElementById('currency-usd');
+
+        // Получение иконки по температуре
+        function getWeatherEmoji(temp) {
+            if (temp < 20) return '🧊'; // Лёд  
+            if (temp < 0) return '❄️'; // Снежинка
+            if (temp > 10) return '🌤️'; // Солнце
+            if (temp > 20) return '🔥'; // Огонек
+            return '☁️'; // Облако (от 0 до 20)
+        }
+
+        // Загрузка погоды
+        async function fetchWeather(cityOrCoords) {
+            let url;
+            if (typeof cityOrCoords === 'string') {
+                url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrCoords}&appid=${weatherApiKey}&units=metric&lang=ru`;
+            } else {
+                url = `https://api.openweathermap.org/data/2.5/weather?lat=${cityOrCoords.lat}&lon=${cityOrCoords.lon}&appid=${weatherApiKey}&units=metric&lang=ru`;
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Город не найден');
+                const data = await response.json();
+                
+                weatherCityElem.textContent = data.name;
+                const temp = Math.round(data.main.temp);
+                weatherTempElem.textContent = `${temp}°C`;
+                weatherIconElem.textContent = getWeatherEmoji(temp);
+            } catch (error) {
+                console.error(error);
+                weatherCityElem.textContent = 'Ошибка';
+                weatherTempElem.textContent = '';
+                weatherIconElem.textContent = '';
+                if (typeof cityOrCoords === 'object') {
+                    // Если не удалось по координатам, пробуем дефолтный город
+                    fetchWeather('Москва');
+                }
+            }
+        }
+
+        // Загрузка валют (ЦБ РФ)
+        async function fetchCurrency() {
+            try {
+                const response = await fetch('https://www.cbr-xml-daily.ru/daily_json.js');
+                const data = await response.json();
+                const usd = data.Valute.USD.Value.toFixed(2);
+                currencyElem.textContent = usd;
+            } catch (error) {
+                console.error(error);
+                currencyElem.textContent = 'Ошибка';
+            }
+        }
+
+        // Определение местоположения
+        function initWeather() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        fetchWeather({
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        });
+                    },
+                    (error) => {
+                        console.log('Геолокация недоступна, используем дефолтный город');
+                        fetchWeather('Чебоксары');
+                    }
+                );
+            } else {
+                fetchWeather('Чебоксары');
+            }
+        }
+
+        // Смена города по клику
+        weatherCityElem.addEventListener('click', () => {
+            const newCity = prompt('Введите название города (на английском или русском):');
+            if (newCity && newCity.trim() !== '') {
+                fetchWeather(newCity.trim());
+            }
+        });
+
+        // Запуск при старте
+        initWeather();
+        fetchCurrency();
+
+
         // --- Управление фоном (Снег) ---
         const bgCanvas = document.getElementById('bg-canvas');
         const bgCtx = bgCanvas.getContext('2d');
@@ -461,7 +577,7 @@
         let bgAnimationId;
 
         const snowflakes = [];
-        const maxSnowflakes = 350; // Увеличили количество снежинок
+        const maxSnowflakes = 350;
 
         function resizeBg() {
             bgWidth = window.innerWidth;
@@ -472,7 +588,6 @@
         window.addEventListener('resize', resizeBg);
         resizeBg();
 
-        // Инициализация снежинки
         function createSnowflake() {
             return {
                 x: Math.random() * bgWidth,
@@ -484,10 +599,9 @@
             };
         }
 
-        // Заполняем массив снежинок
         for (let i = 0; i < maxSnowflakes; i++) {
             let s = createSnowflake();
-            s.y = Math.random() * bgHeight; // Распределяем по экрану сразу
+            s.y = Math.random() * bgHeight;
             snowflakes.push(s);
         }
 
@@ -501,16 +615,13 @@
                 bgCtx.globalAlpha = flake.opacity;
                 bgCtx.fill();
                 
-                // Движение
                 flake.y += flake.speed;
                 flake.x += flake.drift;
                 
-                // Ресет если улетел вниз
                 if (flake.y > bgHeight) {
                     flake.y = -10;
                     flake.x = Math.random() * bgWidth;
                 }
-                // Ресет если улетел вбок
                 if (flake.x > bgWidth + 10) flake.x = -10;
                 if (flake.x < -10) flake.x = bgWidth + 10;
             });
@@ -518,12 +629,9 @@
         }
 
         function animateBg() {
-            // Рисуем снег всегда, независимо от темы
             drawSnow();
             bgAnimationId = requestAnimationFrame(animateBg);
         }
-
-        // Запуск анимации фона
         animateBg();
 
         // --- Логика Темной Темы ---
